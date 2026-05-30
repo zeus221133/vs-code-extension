@@ -37,7 +37,7 @@ export AAD_REQUIRED_APP_ROLES=Api.Access
 uvicorn app:app --host 0.0.0.0 --port 8000
 ```
 
-Then call `GET /api/me` with `Authorization: ******
+Then call `GET /api/me` with an `Authorization` header whose value is the word `Bearer` followed by the access token.
 
 ## On-Behalf-Of (downstream calls)
 
