@@ -1,0 +1,69 @@
+{
+  "name": "azure-obo-client",
+  "displayName": "Azure OBO Client",
+  "description": "VS Code extension that signs the user in with MSAL and calls a Python backend using an access token for the server Entra ID app.",
+  "version": "0.0.1",
+  "publisher": "zeus221133",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "azureObo.signIn",
+        "title": "Azure OBO: Sign In"
+      },
+      {
+        "command": "azureObo.signOut",
+        "title": "Azure OBO: Sign Out"
+      },
+      {
+        "command": "azureObo.callServer",
+        "title": "Azure OBO: Call Python Server"
+      }
+    ],
+    "configuration": {
+      "title": "Azure OBO Client",
+      "properties": {
+        "azureObo.tenantId": {
+          "type": "string",
+          "default": "common",
+          "description": "Entra ID (Azure AD) tenant id, or 'common'/'organizations'."
+        },
+        "azureObo.clientId": {
+          "type": "string",
+          "default": "",
+          "description": "Application (client) id of the CLIENT Entra ID app registration (public client)."
+        },
+        "azureObo.serverScope": {
+          "type": "string",
+          "default": "",
+          "description": "Delegated scope exposed by the SERVER Entra ID app, e.g. api://<server-app-id>/access_as_user."
+        },
+        "azureObo.serverUrl": {
+          "type": "string",
+          "default": "http://localhost:8000",
+          "description": "Base URL of the Python backend server."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "dependencies": {
+    "@azure/msal-node": "^2.16.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.4.5"
+  }
+}
