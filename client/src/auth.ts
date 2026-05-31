@@ -22,7 +22,7 @@ import {
  * backend can validate it and (optionally) run the On-Behalf-Of flow to call
  * further downstream APIs.
  */
-export class AuthService {
+export class AuthService implements vscode.UriHandler {
   private pca: PublicClientApplication | undefined;
   private account: AccountInfo | undefined;
   private pendingAuth:
@@ -167,7 +167,13 @@ export class AuthService {
 
     return new Promise<vscode.Uri>((resolve, reject) => {
       const timer = setTimeout(() => {
-        this.clearPendingAuth(new Error('Sign-in timed out waiting for callback.'));
+        const pending = this.pendingAuth;
+        if (!pending || pending.state !== expectedState) {
+          return;
+        }
+        clearTimeout(pending.timer);
+        this.pendingAuth = undefined;
+        pending.reject(new Error('Sign-in timed out waiting for callback.'));
       }, 5 * 60 * 1000);
 
       this.pendingAuth = {
