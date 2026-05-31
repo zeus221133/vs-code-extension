@@ -27,6 +27,9 @@ using an access token issued for the **server** Entra ID app.
 ```bash
 npm install
 npm run compile
+npm install -g @vscode/vsce  
+vsce package 
+code --install-extension azure-obo-client-0.0.1.vsix
 ```
 
 Press `F5` in VS Code to launch the Extension Development Host, then run the
