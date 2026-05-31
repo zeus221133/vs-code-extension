@@ -10,6 +10,8 @@ export function activate(context: vscode.ExtensionContext): void {
   authService = new AuthService(context);
 
   context.subscriptions.push(
+    vscode.window.registerUriHandler(authService),
+
     vscode.commands.registerCommand('azureObo.signIn', async () => {
       try {
         const account = await authService.signIn();
