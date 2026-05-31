@@ -5,6 +5,9 @@ import {
   AuthenticationResult,
   AccountInfo,
   LogLevel,
+  AuthorizationUrlRequest,
+  AuthorizationCodeRequest,
+  CryptoProvider,
 } from '@azure/msal-node';
 
 /**
@@ -19,9 +22,18 @@ import {
  * backend can validate it and (optionally) run the On-Behalf-Of flow to call
  * further downstream APIs.
  */
-export class AuthService {
+export class AuthService implements vscode.UriHandler {
   private pca: PublicClientApplication | undefined;
   private account: AccountInfo | undefined;
+  private pendingAuth:
+    | {
+        state: string;
+        resolve: (uri: vscode.Uri) => void;
+        reject: (err: Error) => void;
+        timer: NodeJS.Timeout;
+      }
+    | undefined;
+  private readonly cryptoProvider = new CryptoProvider();
 
   constructor(private readonly context: vscode.ExtensionContext) {}
 
@@ -73,24 +85,121 @@ export class AuthService {
   }
 
   /**
-   * Interactive sign-in. Opens the system browser so the user can authenticate
-   * with MSAL and consent to the server app scope.
+   * Interactive sign-in using auth-code + PKCE with a VS Code URI callback.
    */
   public async signIn(): Promise<AccountInfo> {
     const pca = this.getClient();
-    const result = await pca.acquireTokenInteractive({
+    const redirectUri = this.redirectUri;
+    const pkceCodes = await this.cryptoProvider.generatePkceCodes();
+    const state = this.cryptoProvider.createNewGuid();
+
+    const authCodePromise = this.waitForAuthCallback(state);
+    const authUrlRequest: AuthorizationUrlRequest = {
+      authority: `https://login.microsoftonline.com/${this.config.tenantId}`,
       scopes: this.scopes,
-      openBrowser: async (url: string) => {
-        await vscode.env.openExternal(vscode.Uri.parse(url));
-      },
-      successTemplate:
-        '<html><body><h2>Signed in. You can close this tab and return to VS Code.</h2></body></html>',
-      errorTemplate:
-        '<html><body><h2>Sign-in failed. Please return to VS Code and try again.</h2></body></html>',
-    });
+      redirectUri,
+      codeChallenge: pkceCodes.challenge,
+      codeChallengeMethod: 'S256',
+      state,
+    };
+
+    const authUrl = await pca.getAuthCodeUrl(authUrlRequest);
+    const opened = await vscode.env.openExternal(vscode.Uri.parse(authUrl));
+    if (!opened) {
+      this.clearPendingAuth(new Error('Failed to open browser for sign-in.'));
+      throw new Error('Failed to open browser for sign-in.');
+    }
+
+    const callbackUri = await authCodePromise;
+    const query = new URLSearchParams(callbackUri.query);
+    const error = query.get('error');
+    const errorDescription = query.get('error_description');
+    if (error) {
+      throw new Error(
+        `Sign-in failed: ${errorDescription ? `${error}: ${errorDescription}` : error}`
+      );
+    }
+
+    const code = query.get('code');
+    if (!code) {
+      throw new Error('Sign-in failed: callback did not include an authorization code.');
+    }
+
+    const tokenRequest: AuthorizationCodeRequest = {
+      authority: `https://login.microsoftonline.com/${this.config.tenantId}`,
+      scopes: this.scopes,
+      redirectUri,
+      code,
+      codeVerifier: pkceCodes.verifier,
+    };
+    const result = await pca.acquireTokenByCode(tokenRequest);
 
     this.account = result.account ?? undefined;
     return this.requireAccount();
+  }
+
+  public handleUri(uri: vscode.Uri): void {
+    const pending = this.pendingAuth;
+    if (!pending) {
+      return;
+    }
+
+    const expectedPath = '/auth-callback';
+    if (uri.path !== expectedPath) {
+      return;
+    }
+
+    const query = new URLSearchParams(uri.query);
+    const state = query.get('state');
+    if (!state || state !== pending.state) {
+      this.clearPendingAuth(new Error('Sign-in failed: invalid callback state.'));
+      return;
+    }
+
+    this.clearPendingAuth();
+    pending.resolve(uri);
+  }
+
+  private waitForAuthCallback(expectedState: string): Promise<vscode.Uri> {
+    if (this.pendingAuth) {
+      throw new Error('A sign-in flow is already in progress.');
+    }
+
+    return new Promise<vscode.Uri>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        const pending = this.pendingAuth;
+        if (!pending || pending.state !== expectedState) {
+          return;
+        }
+        clearTimeout(pending.timer);
+        this.pendingAuth = undefined;
+        pending.reject(new Error('Sign-in timed out waiting for callback.'));
+      }, 5 * 60 * 1000);
+
+      this.pendingAuth = {
+        state: expectedState,
+        resolve,
+        reject,
+        timer,
+      };
+    });
+  }
+
+  private clearPendingAuth(err?: Error): void {
+    const pending = this.pendingAuth;
+    if (!pending) {
+      return;
+    }
+    clearTimeout(pending.timer);
+    this.pendingAuth = undefined;
+    if (err) {
+      pending.reject(err);
+    }
+  }
+
+  private get redirectUri(): string {
+    const extensionId = this.context.extension.id;
+    return `${vscode.env.uriScheme}://${extensionId}/auth-callback`;
   }
 
   public async signOut(): Promise<void> {

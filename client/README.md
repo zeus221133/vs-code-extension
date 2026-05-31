@@ -6,11 +6,15 @@ using an access token issued for the **server** Entra ID app.
 ## Flow
 
 1. The user runs **Azure OBO: Sign In**. The extension opens the system browser
-   for an interactive MSAL login using the **client** app registration.
-2. The user consents to a delegated scope **exposed by the server app**
+   for an auth-code + PKCE login using the **client** app registration.
+2. Entra ID redirects back to the extension using a VS Code URI callback:
+   - Stable: `vscode://zeus221133.azure-obo-client/auth-callback`
+   - If you use VS Code Insiders, also register:
+     `vscode-insiders://zeus221133.azure-obo-client/auth-callback`
+3. The user consents to a delegated scope **exposed by the server app**
    (`api://<server-app-id>/access_as_user`). The resulting access token has the
    server app as its audience.
-3. **Azure OBO: Call Python Server** sends that token as a bearer token to the
+4. **Azure OBO: Call Python Server** sends that token as a bearer token to the
    backend, which validates the signature, expiry and app role.
 
 ## Configuration (VS Code settings)
@@ -41,3 +45,7 @@ commands from the Command Palette.
   role (e.g. `Api.Access`).
 - **Client app**: register as a public client (allow public client flows) and
   add a delegated permission to the server app's `access_as_user` scope.
+- **Client app authentication redirect URI**: add platform **Mobile and desktop
+  applications** redirect URI:
+  `vscode://zeus221133.azure-obo-client/auth-callback` (and optionally
+  `vscode-insiders://zeus221133.azure-obo-client/auth-callback`).
